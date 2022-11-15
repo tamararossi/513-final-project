@@ -1,0 +1,98 @@
+library(readxl)
+
+
+webdata <- read_excel("C:/Users/tamar/Desktop/customer_final_project Web Data.xlsx", sheet = "Data")
+
+#install.packages("sp")
+library(sp)
+#install.packages("rworldmap")
+library(rworldmap)
+
+points = data.frame(lon=webdata$longitude, lat=webdata$latitude) 
+
+#coords2continent = function(points)
+#{  
+  countriesSP <- getMap(resolution='low')
+  #countriesSP <- getMap(resolution='high') #you could use high res map from rworldxtra if you were concerned about detail
+  
+  # converting points to a SpatialPoints object
+  # setting CRS directly to that from rworldmap
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+  
+  
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices = over(pointsSP, countriesSP)
+  
+  #indices$continent   # returns the continent (6 continent model)
+# webdata$Continent <- indices$REGION   # returns the continent (7 continent model)
+  webdata$Countries <- indices$ADMIN  #returns country name
+  #indices$ISO3 # returns the ISO3 code 
+#}
+
+
+summary(webdata$Countries)
+summary(webdata$medium)
+webdata$medium <- as.factor(x=webdata$medium)
+
+
+webdata$source <-as.factor(x=webdata$source)
+summary(webdata$source)
+
+
+#webdata <- subset(webdata, select = -c(source2)) #to remove the column "source2"
+install.packages("tidyverse")
+library(tidyverse)
+
+#create Others in source
+#Count of observations per source, sorted by frequency descending
+source_freq = webdata %>% group_by(source) %>% summarise(n())
+source_freq = source_freq %>% arrange(desc(source_freq$`n()`))
+
+top_sources = source_freq$source[1:9]
+
+cleansource = function(x){   #create a function
+  if (x %in% top_sources){
+    return(x)
+  } else {
+    return('Others')
+  }
+}
+
+webdata$source = apply(webdata[c('source')],1,cleansource) #apply a function
+
+webdata$source <- as.factor(webdata$source)
+summary(webdata$source)
+
+#create Others in countries
+#Count of observations per country, sorted by frequency descending
+country_freq = webdata %>% group_by(Countries) %>% summarise(n())
+country_freq = country_freq %>% arrange(desc(country_freq$`n()`))
+
+top_countries = country_freq$Countries[1:19]
+
+cleancountries = function(x){   #create a function
+  if (x %in% top_countries){
+    return(x)
+  } else {
+    return('Others')
+  }
+}
+
+webdata$Countries2 = apply(webdata[c('Countries')], 1, cleancountries) #apply a function
+
+webdata$Countries2 <- as.factor(webdata$Countries2)
+summary(webdata$Countries2)
+
+#models
+attach(webdata)
+
+linearmodel <- lm(transactionRevenue ~ Countries2 + medium + source)
+summary(linearmodel)
+
+logisticmodel <- glm(transactions ~ Countries2 + medium + source)
+summary(logisticmodel)
+
+#confusion matrix
+predictions <- predict(logisticmodel, newdata = webdata, type = "response")
+conf.matrix <- table(webdata$transactions, predictions > 0.5)
+model_accuracy <- sum(diag(conf.matrix))/sum(conf.matrix)
